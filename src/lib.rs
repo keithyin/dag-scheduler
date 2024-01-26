@@ -1,9 +1,6 @@
 pub mod scheduler;
 pub mod nodes;
 
-pub fn add(left: usize, right: usize) -> usize {
-    left + right
-}
 
 #[cfg(test)]
 mod tests {
@@ -21,8 +18,8 @@ mod tests {
             pub a: i32
         } 
 
-        fn init(inputs: Vec<Receiver<CtxV>>, outputs: Vec<Sender<CtxV>>) {
-            for i in 0..10000 {
+        fn init(_: Vec<Receiver<CtxV>>, outputs: Vec<Sender<CtxV>>) {
+            for _ in 0..10000 {
                 outputs[0].send(CtxV { a: 1 }).unwrap();
             }
         }
