@@ -26,7 +26,7 @@ impl<Ctx: Send> Scheduler <Ctx>{
     }
 
     /// 一个node可以依赖前序多个节点的输入
-    pub fn add_node(&mut self, last: bool, pre_name_idxs: &Vec<(&str, usize)>, mut node: Box<dyn nodes::TNode<Value = Ctx> + Sync>) -> Option<Vec<Receiver<Ctx>>>{
+    pub fn add_node(&mut self, last: bool, pre_name_idxs: &Vec<(&str, usize)>, node: Box<dyn nodes::TNode<Value = Ctx> + Sync>) -> Option<Vec<Receiver<Ctx>>>{
         let mut final_receivers = None;
         for (pre_name, pre_idx) in pre_name_idxs {
             
