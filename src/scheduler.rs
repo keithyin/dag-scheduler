@@ -8,9 +8,7 @@ pub struct Scheduler <Ctx>{
     nodes: HashMap<String, Box<dyn nodes::TNode<Value = Ctx> + Sync>>,
     nodes_inputs: HashMap<String, Vec<Receiver<Ctx>>>,
     nodes_outputs: HashMap<String, Vec<Receiver<Ctx>>>,
-    nodes_senders: HashMap<String, Vec<Sender<Ctx>>>,
-    ready_to_start: bool
-
+    nodes_senders: HashMap<String, Vec<Sender<Ctx>>>
 }
 
 impl<Ctx: Send> Scheduler <Ctx>{
@@ -20,8 +18,7 @@ impl<Ctx: Send> Scheduler <Ctx>{
             nodes: HashMap::new(),
             nodes_inputs: HashMap::new(),
             nodes_outputs: HashMap::new(),
-            nodes_senders: HashMap::new(),
-            ready_to_start: false
+            nodes_senders: HashMap::new()
         }
     }
 
@@ -62,15 +59,8 @@ impl<Ctx: Send> Scheduler <Ctx>{
         final_receivers
     }
 
-    pub fn seal(&mut self) {
-        self.ready_to_start = true;
-        // self.nodes_inputs.clear();
-        // self.nodes_outputs.clear();
-        // self.nodes_senders.clear();
-    }
 
     pub fn start(&mut self) {
-        assert!(self.ready_to_start, "call seal() first");
 
         thread::scope(|s| {
 

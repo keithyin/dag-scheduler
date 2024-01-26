@@ -55,7 +55,6 @@ mod tests {
             return result;
         });
 
-        sche.seal();
         sche.start();
         let result = handler.join().unwrap();
         println!("result:{result:?}");
