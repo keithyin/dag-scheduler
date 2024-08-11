@@ -1,5 +1,6 @@
 pub mod scheduler;
 pub mod nodes;
+pub mod pipeline;
 
 
 #[cfg(test)]
