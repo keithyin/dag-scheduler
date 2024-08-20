@@ -1,6 +1,8 @@
 pub mod scheduler;
 pub mod nodes;
 pub mod pipeline;
+pub mod utils;
+pub mod pipeline_v2;
 
 
 #[cfg(test)]
@@ -57,5 +59,20 @@ mod tests {
         let result = handler.join().unwrap();
         println!("result:{result:?}");
 
+    }
+
+
+
+
+    #[test]
+    fn test_lined_printer() {
+        println!("a");
+        println!("b");
+        println!("c");
+        print!("\x1b[3A\x1b[K");
+        println!("A");
+        println!("B");
+        println!("C");
+        
     }
 }
