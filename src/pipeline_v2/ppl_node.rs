@@ -1,65 +1,90 @@
 use std::thread::{self, JoinHandle};
 
 use crossbeam::channel::{Sender, Receiver};
+use rand::Rng;
 
-pub trait TPplNode {
-    type Value;
+#[derive(Debug, Clone, Copy)]
+pub enum NodeType {
+    // (channal_cap), receiver is boss
+    Source,
+    Middle(usize),
+    Sink(usize),
+}
+
+pub trait TPplNode: Send + 'static {
+    type MsgType: Send + 'static;
+
+    fn work_fn(&self, inp_v: Option<Self::MsgType>) -> Option<Self::MsgType>;
     
-    fn start(self: Box<Self>) -> JoinHandle<()>;
-
-    fn get_sender(&self) -> &Option<Sender<Self::Value>>;
-    fn get_receiver(&self) -> &Option<Receiver<Self::Value>>;
-    fn set_sender(&mut self, sender: Option<Sender<Self::Value>>);
-    fn set_receiver(&mut self, receiver: Option<Receiver<Self::Value>>);
-
+    fn start(self: Box<Self>, receiver: Option<Receiver<Self::MsgType>>, sender: Option<Sender<Self::MsgType>>) -> JoinHandle<()> {
+        thread::spawn(move || {
+            if let Some(receiver) = receiver {
+                for inp_v in receiver {
+                    
+                    if let Some(ref sender_) = sender {
+                        sender_.send(self.as_ref().work_fn(Some(inp_v)).unwrap()).unwrap();
+                    } else { // for sink
+                        self.as_ref().work_fn(Some(inp_v));
+                    }
+                
+                }
+            } else { // for source
+                let sender = sender.unwrap();
+                loop {
+                    if let Some(oup_v) = self.as_ref().work_fn(None) {
+                        sender.send(oup_v).unwrap();
+                    } else {
+                        break;
+                    }
+                }
+            }
+            
+        })
+    }
+    
 }
 
 #[derive(Debug)]
-pub struct DummyCtx {
-
+pub struct DummyMsg {
+    pub val: usize,
 }
 
 pub struct SourceNode{
-    sender: Sender<DummyCtx>
 }
 
 impl TPplNode for SourceNode {
-    type Value = DummyCtx;
-    fn start(self: Box<Self>) -> JoinHandle<()> {
-        thread::spawn(move|| {
-            self.sender.send(DummyCtx {  }).unwrap();
-        })
-
+    type MsgType = DummyMsg;
+    fn work_fn(&self, inp_v: Option<Self::MsgType>) -> Option<Self::MsgType> {
+        let mut rng = rand::thread_rng();
+        let v = rng.gen::<f32>();
+        if v < 0.3 {
+            return Some(DummyMsg { val: (v * 100.) as usize });
+        } else {
+            None
+        }
+        
     }
 }
 
 pub struct MiddleNode {
-    sender: Sender<DummyCtx>,
-    receiver: Receiver<DummyCtx>
+    
 }
 
 impl TPplNode for MiddleNode{
-    type Value = DummyCtx;
-    fn start(self: Box<Self>) -> JoinHandle<()> {
-        thread::spawn(move || {
-            for ctx in self.receiver {
-                self.sender.send(ctx).unwrap();
-            }
-        })
+    type MsgType = DummyMsg;
+    fn work_fn(&self, inp_v: Option<Self::MsgType>) -> Option<Self::MsgType> {
+        inp_v.and_then(|v| Some(DummyMsg{val: v.val * 10}))
     }
+
 }
 
 pub struct SinkNode {
-    receiver: Receiver<DummyCtx>
 }
 
 impl TPplNode for SinkNode {
-    type Value = DummyCtx;
-    fn start(self: Box<Self>) -> JoinHandle<()> {
-        thread::spawn(move || {
-            for ctx in self.receiver {
-                println!("{:?}", ctx);
-            }
-        })
+    type MsgType = DummyMsg ;
+    fn work_fn(&self, inp_v: Option<Self::MsgType>) -> Option<Self::MsgType> {
+        println!("v:{:?}", inp_v.unwrap());
+        None
     }
 }
