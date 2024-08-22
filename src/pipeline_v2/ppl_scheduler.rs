@@ -109,25 +109,34 @@ impl <Ctx: Send + 'static > PplScheduler<Ctx> {
         (handles, last_recv)
 
     }
+
     
+}
+
+pub fn join_all_nodes_handles(all_nodes_handles: Vec<Vec<JoinHandle<()>>>) {
+    all_nodes_handles.into_iter().flatten().for_each(|v| v.join().unwrap());
+
 }
 
 
 #[cfg(test)]
 mod test {
-    use crate::pipeline_v2::ppl_node::{MiddleNode, NodeType, SinkNode, SourceNode};
+    use crate::pipeline_v2::ppl_node::{DummyMsg, MiddleNode, NodeType, SinkNode, SourceNode};
 
-    use super::PplScheduler;
+    use super::{join_all_nodes_handles, PplScheduler};
 
 
     #[test]
     fn test_pipeline() {
 
-        let source_nodes = SourceNode::new(2);
+        let source_nodes = SourceNode::new(100);
         let middle_nodes = MiddleNode::new(3);
         let sink_nodes = SinkNode::new(4);
         let mut pipeline = PplScheduler::new();
         pipeline.add_single_worker_nodes(NodeType::Source(2), source_nodes);
-
+        pipeline.add_single_worker_nodes(NodeType::Middle(2), middle_nodes);
+        pipeline.add_single_worker_nodes(NodeType::Sink, sink_nodes);
+        join_all_nodes_handles(pipeline.start(None).0);
+        
     }
 }
