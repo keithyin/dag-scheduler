@@ -5,10 +5,10 @@ use rand::Rng;
 
 #[derive(Debug, Clone, Copy)]
 pub enum NodeType {
-    // (channal_cap), receiver is boss
-    Source,
+    // (channal_cap), sender is boss
+    Source(usize),
     Middle(usize),
-    Sink(usize),
+    Sink,
 }
 
 pub trait TPplNode: Send + 'static {
@@ -52,6 +52,14 @@ pub struct DummyMsg {
 pub struct SourceNode{
 }
 
+impl SourceNode {
+    pub fn new(num: usize) -> Vec<Box<dyn TPplNode<MsgType = DummyMsg>>> {
+        (0..num).into_iter()
+            .map(|_| Box::new(SourceNode{}) as Box<dyn TPplNode<MsgType = DummyMsg>>)
+            .collect()
+    }
+}
+
 impl TPplNode for SourceNode {
     type MsgType = DummyMsg;
     fn work_fn(&self, inp_v: Option<Self::MsgType>) -> Option<Self::MsgType> {
@@ -70,6 +78,12 @@ pub struct MiddleNode {
     
 }
 
+impl MiddleNode {
+    pub fn new(num: usize) -> Vec<Self> {
+        (0..num).into_iter().map(|_| MiddleNode{}).collect()
+    }
+}
+
 impl TPplNode for MiddleNode{
     type MsgType = DummyMsg;
     fn work_fn(&self, inp_v: Option<Self::MsgType>) -> Option<Self::MsgType> {
@@ -79,6 +93,12 @@ impl TPplNode for MiddleNode{
 }
 
 pub struct SinkNode {
+}
+
+impl SinkNode {
+    pub fn new(num: usize) -> Vec<Self> {
+        (0..num).into_iter().map(|_| SinkNode{}).collect()
+    }
 }
 
 impl TPplNode for SinkNode {
