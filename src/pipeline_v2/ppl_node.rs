@@ -19,7 +19,16 @@ pub trait TPplNode: Send + 'static {
     ///         for source: job DONE
     ///         for middle: send nothing
     ///         for sink: return anything you want, but the returned value will be dropped immediately
-    fn work_fn(&self, inp_v: Option<Self::MsgType>) -> Option<Self::MsgType>;
+    /// return
+    ///     one to one. Vec<Self::MsgType>.len() == 1
+    ///     multiple to one. return None at some steps. then return Vec<Self::MsgType>.len() == 1
+    ///     one to multi. Vec<Self::MsgType>.len() > 1
+    /// inp: 
+    ///     SourceNode: always None
+    ///     Middle & Sink. this is the extra step. designed for send the last buffer in the work node.
+    ///         if no buffer in the worker node. just return None
+    ///         
+    fn work_fn(&self, inp_v: Option<Self::MsgType>) -> Option<Vec<Self::MsgType>>;
     
     fn start(self: Box<Self>, receiver: Option<Receiver<Self::MsgType>>, sender: Option<Sender<Self::MsgType>>) -> JoinHandle<()> {
         thread::spawn(move || {
@@ -27,8 +36,8 @@ pub trait TPplNode: Send + 'static {
                 for inp_v in receiver {
                     
                     if let Some(ref sender_) = sender { // middle
-                        if let Some(val) = self.as_ref().work_fn(Some(inp_v)) {
-                            sender_.send(val).unwrap();
+                        if let Some(vec_val) = self.as_ref().work_fn(Some(inp_v)) {
+                            vec_val.into_iter().for_each(|val| sender_.send(val).unwrap());
                         }
                     } else { // for sink
                         self.as_ref().work_fn(Some(inp_v));
@@ -36,14 +45,22 @@ pub trait TPplNode: Send + 'static {
                 
                 }
             } else { // for source
-                let sender = sender.unwrap();
+                let sender = sender.as_ref().unwrap();
                 loop {
-                    if let Some(oup_v) = self.as_ref().work_fn(None) {
-                        sender.send(oup_v).unwrap();
+                    if let Some(vec_val) = self.as_ref().work_fn(None) {
+                        vec_val.into_iter().for_each(|val| sender.send(val).unwrap());
                     } else {
                         break;
                     }
                 }
+            }
+
+            if let Some(ref sender_) = sender { // middle
+                if let Some(vec_val) = self.as_ref().work_fn(None) {
+                    vec_val.into_iter().for_each(|val| sender_.send(val).unwrap());
+                }
+            } else { // for sink
+                self.as_ref().work_fn(None);
             }
             
         })
@@ -63,19 +80,23 @@ pub struct SourceNode{
 impl SourceNode {
     pub fn new(num: usize) -> Vec<Box<dyn TPplNode<MsgType = DummyMsg> + Sync>> {
         (0..num).into_iter()
-            .map(|_| Box::new(SourceNode{counter: Arc::new(Mutex::new(10))}) as Box<dyn TPplNode<MsgType = DummyMsg> + Sync>)
-            .collect()
+        .map(|_| 
+            Box::new(SourceNode{counter: Arc::new(Mutex::new(2))}) 
+                as Box<dyn TPplNode<MsgType = DummyMsg> + Sync>)
+        .collect()
     }
 }
 
 impl TPplNode for SourceNode {
     type MsgType = DummyMsg;
-    fn work_fn(&self, inp_v: Option<Self::MsgType>) -> Option<Self::MsgType> {
-        let v = self.counter.lock().unwrap();
+    fn work_fn(&self, inp_v: Option<Self::MsgType>) -> Option<Vec<Self::MsgType>> {
+        let mut v = self.counter.lock().unwrap();
         if *v == 0 {
             None
         } else {
-            Some(DummyMsg { val: *v})
+            let old = *v;
+            *v -= 1;
+            Some(vec![DummyMsg { val: old}])
         }
         
     }
@@ -88,15 +109,17 @@ pub struct MiddleNode {
 impl MiddleNode {
     pub fn new(num: usize) -> Vec<Box<dyn TPplNode<MsgType = DummyMsg> + Sync>> {
         (0..num).into_iter()
-            .map(|_| Box::new(MiddleNode{}) as Box<dyn TPplNode<MsgType = DummyMsg> + Sync>)
-            .collect()
+        .map(|_| 
+            Box::new(MiddleNode{}) 
+                as Box<dyn TPplNode<MsgType = DummyMsg> + Sync>)
+        .collect()
     }
 }
 
 impl TPplNode for MiddleNode{
     type MsgType = DummyMsg;
-    fn work_fn(&self, inp_v: Option<Self::MsgType>) -> Option<Self::MsgType> {
-        inp_v.and_then(|v| Some(DummyMsg{val: v.val * 10}))
+    fn work_fn(&self, inp_v: Option<Self::MsgType>) -> Option<Vec<Self::MsgType>> {
+        inp_v.and_then(|v| Some(vec![DummyMsg{val: v.val * 10}]))
     }
 
 }
@@ -107,14 +130,16 @@ pub struct SinkNode {
 impl SinkNode {
     pub fn new(num: usize) -> Vec<Box<dyn TPplNode<MsgType = DummyMsg> + Sync>> {
         (0..num).into_iter()
-            .map(|_| Box::new(SinkNode{}) as Box<dyn TPplNode<MsgType = DummyMsg> + Sync>)
-            .collect()
+        .map(|_| 
+            Box::new(SinkNode{}) 
+            as Box<dyn TPplNode<MsgType = DummyMsg> + Sync>)
+        .collect()
     }
 }
 
 impl TPplNode for SinkNode {
     type MsgType = DummyMsg ;
-    fn work_fn(&self, inp_v: Option<Self::MsgType>) -> Option<Self::MsgType> {
+    fn work_fn(&self, inp_v: Option<Self::MsgType>) -> Option<Vec<Self::MsgType>> {
         println!("v:{:?}", inp_v.unwrap());
         None
     }

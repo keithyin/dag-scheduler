@@ -72,7 +72,6 @@ impl <Ctx: Send + 'static > PplScheduler<Ctx> {
                     single_work_nodes.into_iter()
                         .map(|node| node.start(None, sender.clone()))
                         .collect::<Vec<JoinHandle<()>>>()
-
                 },
                 NodeType::Middle(_) => {
                     let recv  = if idx > 0 {
@@ -127,9 +126,8 @@ mod test {
 
 
     #[test]
-    fn test_pipeline() {
-
-        let source_nodes = SourceNode::new(100);
+    fn test_pipeline_v2() {
+        let source_nodes = SourceNode::new(5);
         let middle_nodes = MiddleNode::new(3);
         let sink_nodes = SinkNode::new(4);
         let mut pipeline = PplScheduler::new();
