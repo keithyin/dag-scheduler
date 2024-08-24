@@ -1,9 +1,11 @@
-use std::{sync::{Arc, Mutex}, thread::{self, JoinHandle}};
+use std::{collections::HashMap, sync::{Arc, Mutex}, thread::{self, JoinHandle}};
 
-use crossbeam::{channel::{Receiver, Sender}, epoch::Atomic};
-use rand::Rng;
+use crossbeam::channel::{Receiver, Sender};
+use once_cell::sync::Lazy;
 
-#[derive(Debug, Clone, Copy)]
+
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum NodeType {
     // (channal_cap), sender is boss
     Source(usize),
@@ -11,43 +13,65 @@ pub enum NodeType {
     Sink,
 }
 
+static CALLER_COUNTS: Lazy<Arc<Mutex<HashMap<String, usize>>>> = Lazy::new(|| {
+    Arc::new(Mutex::new(HashMap::new()))
+});
+
+/// a PplNode means a single thread worker. if you want multiple threads to do the same job. 
+/// you should build the sampe PplNode multiple times 
 pub trait TPplNode: Send + 'static {
     type MsgType: Send + 'static;
 
-    /// default behavior. 
-    ///     return None. 
-    ///         for source: job DONE
-    ///         for middle: send nothing
-    ///         for sink: return anything you want, but the returned value will be dropped immediately
-    /// return
-    ///     one to one. Vec<Self::MsgType>.len() == 1
-    ///     multiple to one. return None at some steps. then return Vec<Self::MsgType>.len() == 1
-    ///     one to multi. Vec<Self::MsgType>.len() > 1
-    /// inp: 
-    ///     SourceNode: always None
-    ///     Middle & Sink. this is the extra step. designed for send the last buffer in the work node.
-    ///         if no buffer in the worker node. just return None
-    ///         
-    fn work_fn(&self, inp_v: Option<Self::MsgType>) -> Option<Vec<Self::MsgType>>;
+    /// return:
+    ///     for Source:
+    ///         return None means job done
+    ///         return Some means result of job
+    ///     for Middle:
+    ///         return None means send nothing
+    ///         return Some means result of job
+    ///     for Sink
+    ///         you shuold alway return None 
+    /// inp_v:
+    ///     for Source: always none
+    ///     for Middle: none means the previous job done
+    ///     for Sink: none means the previous job done
+    /// based on this . one can implement 
+    ///     one to one
+    ///     multi to one.  (need a buffer within a woker node)
+    ///     one to multi
+    ///     multi to multi
+    fn work_fn(&mut self, inp_v: Option<Self::MsgType>) -> Option<Vec<Self::MsgType>>;
+
+    /// specify worker name
+    fn name(&self) -> &str;
     
-    fn start(self: Box<Self>, receiver: Option<Receiver<Self::MsgType>>, sender: Option<Sender<Self::MsgType>>) -> JoinHandle<()> {
-        thread::spawn(move || {
+    /// ppl_scheduler will call this method to start the worker thread
+    fn start(mut self: Box<Self>, receiver: Option<Receiver<Self::MsgType>>, sender: Option<Sender<Self::MsgType>>) -> JoinHandle<()> {
+        let worker_idx = {
+            let mut counts = CALLER_COUNTS.lock().unwrap();
+            let counter = counts.entry(self.name().to_string()).or_insert(0);
+            *counter += 1;
+            *counter - 1
+        };
+        
+        thread::Builder::new().name(format!("{}-{}", self.name(), worker_idx))
+        .spawn(move || {
             if let Some(receiver) = receiver {
                 for inp_v in receiver {
                     
                     if let Some(ref sender_) = sender { // middle
-                        if let Some(vec_val) = self.as_ref().work_fn(Some(inp_v)) {
+                        if let Some(vec_val) = self.as_mut().work_fn(Some(inp_v)) {
                             vec_val.into_iter().for_each(|val| sender_.send(val).unwrap());
                         }
                     } else { // for sink
-                        self.as_ref().work_fn(Some(inp_v));
+                        self.as_mut().work_fn(Some(inp_v));
                     }
                 
                 }
             } else { // for source
                 let sender = sender.as_ref().unwrap();
                 loop {
-                    if let Some(vec_val) = self.as_ref().work_fn(None) {
+                    if let Some(vec_val) = self.as_mut().work_fn(None) {
                         vec_val.into_iter().for_each(|val| sender.send(val).unwrap());
                     } else {
                         break;
@@ -56,14 +80,14 @@ pub trait TPplNode: Send + 'static {
             }
 
             if let Some(ref sender_) = sender { // middle
-                if let Some(vec_val) = self.as_ref().work_fn(None) {
+                if let Some(vec_val) = self.as_mut().work_fn(None) {
                     vec_val.into_iter().for_each(|val| sender_.send(val).unwrap());
                 }
             } else { // for sink
-                self.as_ref().work_fn(None);
+                self.as_mut().work_fn(None);
             }
             
-        })
+        }).unwrap()
     }
     
 }
@@ -89,7 +113,7 @@ impl SourceNode {
 
 impl TPplNode for SourceNode {
     type MsgType = DummyMsg;
-    fn work_fn(&self, inp_v: Option<Self::MsgType>) -> Option<Vec<Self::MsgType>> {
+    fn work_fn(&mut self, inp_v: Option<Self::MsgType>) -> Option<Vec<Self::MsgType>> {
         let mut v = self.counter.lock().unwrap();
         if *v == 0 {
             None
@@ -99,6 +123,9 @@ impl TPplNode for SourceNode {
             Some(vec![DummyMsg { val: old}])
         }
         
+    }
+    fn name(&self) -> &str {
+        "SourceNode"
     }
 }
 
@@ -118,8 +145,11 @@ impl MiddleNode {
 
 impl TPplNode for MiddleNode{
     type MsgType = DummyMsg;
-    fn work_fn(&self, inp_v: Option<Self::MsgType>) -> Option<Vec<Self::MsgType>> {
+    fn work_fn(&mut self, inp_v: Option<Self::MsgType>) -> Option<Vec<Self::MsgType>> {
         inp_v.and_then(|v| Some(vec![DummyMsg{val: v.val * 10}]))
+    }
+    fn name(&self) -> &str {
+        "MiddleNode"
     }
 
 }
@@ -139,8 +169,12 @@ impl SinkNode {
 
 impl TPplNode for SinkNode {
     type MsgType = DummyMsg ;
-    fn work_fn(&self, inp_v: Option<Self::MsgType>) -> Option<Vec<Self::MsgType>> {
+    fn work_fn(&mut self, inp_v: Option<Self::MsgType>) -> Option<Vec<Self::MsgType>> {
         println!("v:{:?}", inp_v.unwrap());
         None
+    }
+
+    fn name(&self) -> &str {
+        "SinkNode"
     }
 }

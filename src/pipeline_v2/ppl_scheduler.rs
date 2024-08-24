@@ -23,15 +23,18 @@ impl <Ctx: Send + 'static > PplScheduler<Ctx> {
     }
 
     pub fn add_single_worker_nodes(&mut self, node_type: NodeType, nodes: Vec<Box<dyn TPplNode<MsgType = Ctx> + Sync>>) {
+        
         match node_type {
             NodeType::Source(cap) => {
-                assert!(self.nodes.as_ref().unwrap().len() == 0, "only the first node can be source");
+                assert!(self.prev_node_type.is_none(), "only the first nodes can be Source Nodes");
                 self.nodes.as_mut().unwrap().push(nodes);
                 let (send, recv) = channel::bounded::<Ctx>(cap);
                 self.send_recvs.push((Some(send), Some(recv)));
             },
 
             NodeType::Middle(cap) => {
+                assert!(self.prev_node_type.is_none() || self.prev_node_type.unwrap() != NodeType::Sink, 
+                    "Middle nodes cannot be placed after the Sink nodes.");
                 if self.prev_node_type.is_some() {
                     match self.prev_node_type.as_ref().unwrap() {
                         NodeType::Sink => panic!("the precedent node of the MiddleNode can't be Sink"),
@@ -45,7 +48,9 @@ impl <Ctx: Send + 'static > PplScheduler<Ctx> {
             },
 
             NodeType::Sink => {
-                assert!(self.nodes.as_ref().unwrap().len() > 0, "sink node need a prev node");
+                assert!(self.prev_node_type.is_none() || self.prev_node_type.unwrap() != NodeType::Sink,
+                    "Sink nodes cannot be placed after the Sink nodes.");
+
                 self.nodes.as_mut().unwrap().push(nodes);
                 self.send_recvs.push((None, None));
 
