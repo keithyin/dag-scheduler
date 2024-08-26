@@ -2,7 +2,6 @@ pub mod scheduler;
 pub mod nodes;
 pub mod pipeline;
 pub mod utils;
-pub mod pipeline_v2;
 
 
 #[cfg(test)]
