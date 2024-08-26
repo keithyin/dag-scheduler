@@ -1,6 +1,6 @@
 [package]
 name = "dag-scheduler"
-version = "0.2.1"
+version = "0.2.2"
 edition = "2021"
 description = "a scheduler of dag computation graph"
 license = "MIT"
