@@ -25,7 +25,7 @@ where
     T: Send + 'static,
 {
     pub fn add_stage<S>(
-        mut self,
+        self,
         name: &str,
         threads: usize,
         handler: impl FnOnce(Option<Receiver<T>>, Option<Sender<S>>) + Clone + Send + 'static,
