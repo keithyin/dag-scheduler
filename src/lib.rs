@@ -3,6 +3,7 @@ pub mod nodes;
 // pub mod pipeline;
 pub mod utils;
 pub mod ppl_v2;
+pub mod ppl_v3;
 
 
 // #[cfg(test)]

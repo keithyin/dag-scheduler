@@ -26,7 +26,7 @@ impl Pipeline<Source> {
         name: &str,
         threads: usize,
         handler: impl FnOnce(Sender<S>) + Clone + Send + 'static,
-        cap: Option<usize>,
+        cap: usize,
     ) -> Pipeline<S>
     where
         S: Send + 'static,
@@ -34,7 +34,7 @@ impl Pipeline<Source> {
         let mut handlers = self.join_handlers.take();
 
         let (next_send, next_recv) =
-            crossbeam::channel::bounded(cap.expect("cap can't be None when is_sink==false"));
+            crossbeam::channel::bounded(cap);
         for idx in 0..threads {
             let handler_ = handler.clone();
             let send_ = next_send.clone();
@@ -65,7 +65,7 @@ where
         name: &str,
         threads: usize,
         handler: impl FnOnce(Receiver<T>, Sender<S>) + Clone + Send + 'static,
-        cap: Option<usize>,
+        cap: usize,
     ) -> Pipeline<S>
     where
         S: Send + 'static,
@@ -73,7 +73,7 @@ where
         let mut handlers = self.join_handlers.take();
 
         let (next_send, next_recv) =
-            crossbeam::channel::bounded(cap.expect("cap can't be None when is_sink==false"));
+            crossbeam::channel::bounded(cap);
 
         for idx in 0..threads {
             let handler_ = handler.clone();
@@ -156,7 +156,7 @@ mod test {
             move |s: Sender<i32>| {
                 s.send(100).unwrap();
             },
-            Some(10),
+            10,
         );
 
         let ppl = ppl.add_stage(
@@ -167,7 +167,7 @@ mod test {
                     let _ = s.send(v * 10);
                 }
             },
-            Some(10),
+            10,
         );
 
         let _ppl = ppl.add_sink_stage("sink", 1, move |r: Receiver<i32>| {
