@@ -9,7 +9,7 @@ pub struct Source(PhantomData<*const ()>);
 pub struct Sink(PhantomData<*const ()>);
 
 pub struct Pipeline<T> {
-    receiver: Option<Receiver<T>>,
+    receiver: Option<Receiver<T>>, // receiver of last worker
     join_handlers: Cell<Vec<JoinHandle<()>>>,
 }
 
@@ -25,7 +25,7 @@ impl Pipeline<Source> {
         self,
         name: &str,
         threads: usize,
-        handler: impl FnOnce(Option<Sender<S>>) + Clone + Send + 'static,
+        handler: impl FnOnce(Sender<S>) + Clone + Send + 'static,
         cap: Option<usize>,
     ) -> Pipeline<S>
     where
@@ -33,11 +33,8 @@ impl Pipeline<Source> {
     {
         let mut handlers = self.join_handlers.take();
 
-        let (next_send, next_recv) = {
-            let (s, r) =
-                crossbeam::channel::bounded(cap.expect("cap can't be None when is_sink==false"));
-            (Some(s), Some(r))
-        };
+        let (next_send, next_recv) =
+            crossbeam::channel::bounded(cap.expect("cap can't be None when is_sink==false"));
         for idx in 0..threads {
             let handler_ = handler.clone();
             let send_ = next_send.clone();
@@ -53,7 +50,7 @@ impl Pipeline<Source> {
         }
 
         Pipeline {
-            receiver: next_recv,
+            receiver: Some(next_recv),
             join_handlers: Cell::new(handlers),
         }
     }
@@ -67,8 +64,7 @@ where
         self,
         name: &str,
         threads: usize,
-        handler: impl FnOnce(Option<Receiver<T>>, Option<Sender<S>>) + Clone + Send + 'static,
-        is_sink: bool,
+        handler: impl FnOnce(Receiver<T>, Sender<S>) + Clone + Send + 'static,
         cap: Option<usize>,
     ) -> Pipeline<S>
     where
@@ -76,13 +72,9 @@ where
     {
         let mut handlers = self.join_handlers.take();
 
-        let (next_send, next_recv) = if is_sink {
-            (None, None)
-        } else {
-            let (s, r) =
-                crossbeam::channel::bounded(cap.expect("cap can't be None when is_sink==false"));
-            (Some(s), Some(r))
-        };
+        let (next_send, next_recv) =
+            crossbeam::channel::bounded(cap.expect("cap can't be None when is_sink==false"));
+
         for idx in 0..threads {
             let handler_ = handler.clone();
             let recv_ = self.receiver.clone();
@@ -92,14 +84,14 @@ where
             let join_handler = thread::Builder::new()
                 .name(tname)
                 .spawn(move || {
-                    handler_(recv_, send_);
+                    handler_(recv_.unwrap(), send_);
                 })
                 .unwrap();
             handlers.push(join_handler);
         }
 
         Pipeline {
-            receiver: next_recv,
+            receiver: Some(next_recv),
             join_handlers: Cell::new(handlers),
         }
     }
@@ -108,7 +100,7 @@ where
         self,
         name: &str,
         threads: usize,
-        handler: impl FnOnce(Option<Receiver<T>>) + Clone + Send + 'static,
+        handler: impl FnOnce(Receiver<T>) + Clone + Send + 'static,
     ) -> Pipeline<Sink> {
         let mut handlers = self.join_handlers.take();
 
@@ -120,7 +112,7 @@ where
             let join_handler = thread::Builder::new()
                 .name(tname)
                 .spawn(move || {
-                    handler_(recv_);
+                    handler_(recv_.unwrap());
                 })
                 .unwrap();
             handlers.push(join_handler);
@@ -153,7 +145,7 @@ mod test {
 
     use crossbeam::channel::{Receiver, Sender};
 
-    use super::{Pipeline, Sink, Source};
+    use super::Pipeline;
 
     #[test]
     fn test_pipeline() {
@@ -161,15 +153,26 @@ mod test {
         let ppl = ppl.add_init_stage(
             "source",
             4,
-            move |s: Option<Sender<i32>>| {
-                s.unwrap().send(100).unwrap();
+            move |s: Sender<i32>| {
+                s.send(100).unwrap();
             },
             Some(10),
         );
 
-        let _ppl = ppl.add_sink_stage("sink", 1, move |r: Option<Receiver<i32>>| {
+        let ppl = ppl.add_stage(
+            "Multiply",
+            2,
+            move |r: Receiver<i32>, s: Sender<i32>| {
+                for v in r {
+                    let _ = s.send(v * 10);
+                }
+            },
+            Some(10),
+        );
+
+        let _ppl = ppl.add_sink_stage("sink", 1, move |r: Receiver<i32>| {
             let mut sum = 0;
-            for v in r.unwrap() {
+            for v in r {
                 sum += v;
             }
             println!("sum_result: {}", sum);
