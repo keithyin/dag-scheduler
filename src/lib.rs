@@ -1,10 +1,8 @@
 // pub mod scheduler;
 pub mod nodes;
 // pub mod pipeline;
-pub mod utils;
 pub mod ppl_v2;
-pub mod ppl_v3;
-
+pub mod utils;
 
 // #[cfg(test)]
 // mod tests {
@@ -20,7 +18,7 @@ pub mod ppl_v3;
 //     fn test_pipeline() {
 //         struct CtxV {
 //             pub a: i32
-//         } 
+//         }
 
 //         fn init(_: Vec<Receiver<CtxV>>, outputs: Vec<Sender<CtxV>>) {
 //             for _ in 0..10000 {
@@ -43,7 +41,7 @@ pub mod ppl_v3;
 //         }
 
 //         let mut sche = scheduler::Scheduler::new();
-        
+
 //         sche.add_node(false, &vec![], Box::new(CommonNode::new("first", 2, &[10], init)));
 //         sche.add_node(false, &vec![("first", 0)], Box::new(CommonNode::new("second", 2, &[10], add_one)));
 //         let outputs = sche.add_node(true, &vec![("second", 0)], Box::new(CommonNode::new("third", 2, &[10], add_two))).unwrap();
@@ -62,9 +60,6 @@ pub mod ppl_v3;
 
 //     }
 
-
-
-
 //     #[test]
 //     fn test_lined_printer() {
 //         println!("a");
@@ -74,6 +69,6 @@ pub mod ppl_v3;
 //         println!("A");
 //         println!("B");
 //         println!("C");
-        
+
 //     }
 // }
