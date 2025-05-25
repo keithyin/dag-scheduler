@@ -38,7 +38,7 @@ impl Pipeline<Source> {
         }
     }
 
-    pub fn add_init_stage<S>(
+    pub fn add_source_stage<S>(
         self,
         name: &str,
         threads: usize,
@@ -70,7 +70,7 @@ impl Pipeline<Source> {
             join_handlers: Cell::new(handlers),
         }
     }
-    pub fn add_init_stage_work<S, H>(
+    pub fn add_source_work_stage<S, H>(
         self,
         name: &str,
         threads: usize,
@@ -147,12 +147,12 @@ where
         }
     }
 
-    pub fn add_stage_work<S, H>(
+    pub fn add_work_stage<S, H>(
         self,
         name: &str,
         threads: usize,
         handler: H,
-        cap: Option<usize>,
+        cap: usize,
     ) -> Pipeline<S>
     where
         H: TIntermediateWork<RecvType = T, SendType = S>,
@@ -161,7 +161,7 @@ where
         let mut handlers = self.join_handlers.take();
 
         let (next_send, next_recv) =
-            crossbeam::channel::bounded(cap.expect("cap can't be None when is_sink==false"));
+            crossbeam::channel::bounded(cap);
 
         for idx in 0..threads {
             let handler_ = handler.clone();
@@ -215,7 +215,7 @@ where
         }
     }
 
-    pub fn add_sink_stage_work<H>(self, name: &str, threads: usize, handler: H) -> Pipeline<Sink>
+    pub fn add_sink_work_stage<H>(self, name: &str, threads: usize, handler: H) -> Pipeline<Sink>
     where
         H: TSinkWork<RecvType = T>,
     {
@@ -271,7 +271,7 @@ mod test {
     #[test]
     fn test_pipeline() {
         let ppl = Pipeline::new();
-        let ppl = ppl.add_init_stage(
+        let ppl = ppl.add_source_stage(
             "source",
             4,
             move |s: Sender<i32>| {
@@ -340,13 +340,13 @@ mod test {
     #[test]
     fn test_pipeline_with_work() {
         let ppl = Pipeline::new();
-        let ppl = ppl.add_init_stage_work(
+        let ppl = ppl.add_source_work_stage(
             "source",
             4,
             SourceWork(Arc::new(Mutex::new(vec![1, 2, 3, 4]))),
             Some(10),
         );
-        let ppl = ppl.add_stage_work("Multiply", 2, IntermidiateWork, Some(10));
-        let _ppl = ppl.add_sink_stage_work("sink", 1, SinkWork);
+        let ppl = ppl.add_work_stage("Multiply", 2, IntermidiateWork, 10);
+        let _ppl = ppl.add_sink_work_stage("sink", 1, SinkWork);
     }
 }
