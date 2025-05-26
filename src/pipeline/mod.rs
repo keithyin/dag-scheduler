@@ -42,7 +42,7 @@ impl Pipeline<Source> {
         self,
         name: &str,
         threads: usize,
-        handler: impl FnOnce(Sender<S>) + Clone + Send + 'static,
+        handler: impl FnOnce(Sender<S>, usize) + Clone + Send + 'static,
         cap: usize,
     ) -> Pipeline<S>
     where
@@ -59,7 +59,7 @@ impl Pipeline<Source> {
             let join_handler = thread::Builder::new()
                 .name(tname)
                 .spawn(move || {
-                    handler_(send_);
+                    handler_(send_, idx);
                 })
                 .unwrap();
             handlers.push(join_handler);
@@ -115,7 +115,7 @@ where
         self,
         name: &str,
         threads: usize,
-        handler: impl FnOnce(Receiver<T>, Sender<S>) + Clone + Send + 'static,
+        handler: impl FnOnce(Receiver<T>, Sender<S>, usize) + Clone + Send + 'static,
         cap: usize,
     ) -> Pipeline<S>
     where
@@ -134,7 +134,7 @@ where
             let join_handler = thread::Builder::new()
                 .name(tname)
                 .spawn(move || {
-                    handler_(recv_.unwrap(), send_);
+                    handler_(recv_.unwrap(), send_, idx);
                 })
                 .unwrap();
             handlers.push(join_handler);
@@ -189,7 +189,7 @@ where
         self,
         name: &str,
         threads: usize,
-        handler: impl FnOnce(Receiver<T>) + Clone + Send + 'static,
+        handler: impl FnOnce(Receiver<T>, usize) + Clone + Send + 'static,
     ) -> Pipeline<Sink> {
         let mut handlers = self.join_handlers.take();
 
@@ -201,7 +201,7 @@ where
             let join_handler = thread::Builder::new()
                 .name(tname)
                 .spawn(move || {
-                    handler_(recv_.unwrap());
+                    handler_(recv_.unwrap(), idx);
                 })
                 .unwrap();
             handlers.push(join_handler);
@@ -272,7 +272,7 @@ mod test {
         let ppl = ppl.add_source_stage(
             "source",
             4,
-            move |s: Sender<i32>| {
+            move |s: Sender<i32>, _thread_idx: usize| {
                 s.send(100).unwrap();
             },
             10,
@@ -281,7 +281,7 @@ mod test {
         let ppl = ppl.add_stage(
             "Multiply",
             2,
-            move |r: Receiver<i32>, s: Sender<i32>| {
+            move |r: Receiver<i32>, s: Sender<i32>, _thread_idx: usize| {
                 for v in r {
                     let _ = s.send(v * 10);
                 }
@@ -289,7 +289,7 @@ mod test {
             10,
         );
 
-        let _ppl = ppl.add_sink_stage("sink", 1, move |r: Receiver<i32>| {
+        let _ppl = ppl.add_sink_stage("sink", 1, move |r: Receiver<i32>, _thread_idx: usize| {
             let mut sum = 0;
             for v in r {
                 sum += v;
