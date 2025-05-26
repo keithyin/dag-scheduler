@@ -75,7 +75,7 @@ impl Pipeline<Source> {
         name: &str,
         threads: usize,
         handler: H,
-        cap: Option<usize>,
+        cap: usize,
     ) -> Pipeline<S>
     where
         H: TSourceWork<SendType = S>,
@@ -83,8 +83,7 @@ impl Pipeline<Source> {
     {
         let mut handlers = self.join_handlers.take();
 
-        let (next_send, next_recv) =
-            crossbeam::channel::bounded(cap.expect("cap can't be None when is_sink==false"));
+        let (next_send, next_recv) = crossbeam::channel::bounded(cap);
         for idx in 0..threads {
             let send_ = next_send.clone();
             let tname = format!("{}_{}", name, idx);
@@ -160,8 +159,7 @@ where
     {
         let mut handlers = self.join_handlers.take();
 
-        let (next_send, next_recv) =
-            crossbeam::channel::bounded(cap);
+        let (next_send, next_recv) = crossbeam::channel::bounded(cap);
 
         for idx in 0..threads {
             let handler_ = handler.clone();
@@ -344,7 +342,7 @@ mod test {
             "source",
             4,
             SourceWork(Arc::new(Mutex::new(vec![1, 2, 3, 4]))),
-            Some(10),
+            10,
         );
         let ppl = ppl.add_work_stage("Multiply", 2, IntermidiateWork, 10);
         let _ppl = ppl.add_sink_work_stage("sink", 1, SinkWork);
