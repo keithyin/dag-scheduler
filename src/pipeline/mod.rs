@@ -44,13 +44,15 @@ impl Pipeline<Source> {
         threads: usize,
         handler: impl FnOnce(Sender<S>, usize) + Clone + Send + 'static,
         cap: usize,
+        next_send_recv: Option<(Sender<S>, Receiver<S>)>,
     ) -> Pipeline<S>
     where
         S: Send + 'static,
     {
         let mut handlers = self.join_handlers.take();
 
-        let (next_send, next_recv) = crossbeam::channel::bounded(cap);
+        let (next_send, next_recv) =
+            next_send_recv.unwrap_or_else(|| crossbeam::channel::bounded(cap));
         for idx in 0..threads {
             let handler_ = handler.clone();
             let send_ = next_send.clone();
@@ -76,6 +78,7 @@ impl Pipeline<Source> {
         threads: usize,
         handler: H,
         cap: usize,
+        next_send_recv: Option<(Sender<S>, Receiver<S>)>,
     ) -> Pipeline<S>
     where
         H: TSourceWork<SendType = S>,
@@ -83,7 +86,8 @@ impl Pipeline<Source> {
     {
         let mut handlers = self.join_handlers.take();
 
-        let (next_send, next_recv) = crossbeam::channel::bounded(cap);
+        let (next_send, next_recv) =
+            next_send_recv.unwrap_or_else(|| crossbeam::channel::bounded(cap));
         for idx in 0..threads {
             let send_ = next_send.clone();
             let tname = format!("{}_{}", name, idx);
@@ -117,13 +121,15 @@ where
         threads: usize,
         handler: impl FnOnce(Receiver<T>, Sender<S>, usize) + Clone + Send + 'static,
         cap: usize,
+        next_send_recv: Option<(Sender<S>, Receiver<S>)>,
     ) -> Pipeline<S>
     where
         S: Send + 'static,
     {
         let mut handlers = self.join_handlers.take();
 
-        let (next_send, next_recv) = crossbeam::channel::bounded(cap);
+        let (next_send, next_recv) =
+            next_send_recv.unwrap_or_else(|| crossbeam::channel::bounded(cap));
 
         for idx in 0..threads {
             let handler_ = handler.clone();
@@ -152,6 +158,7 @@ where
         threads: usize,
         handler: H,
         cap: usize,
+        next_send_recv: Option<(Sender<S>, Receiver<S>)>,
     ) -> Pipeline<S>
     where
         H: TIntermediateWork<RecvType = T, SendType = S>,
@@ -159,7 +166,8 @@ where
     {
         let mut handlers = self.join_handlers.take();
 
-        let (next_send, next_recv) = crossbeam::channel::bounded(cap);
+        let (next_send, next_recv) =
+            next_send_recv.unwrap_or_else(|| crossbeam::channel::bounded(cap));
 
         for idx in 0..threads {
             let handler_ = handler.clone();
@@ -276,6 +284,7 @@ mod test {
                 s.send(100).unwrap();
             },
             10,
+            None,
         );
 
         let ppl = ppl.add_stage(
@@ -287,6 +296,7 @@ mod test {
                 }
             },
             10,
+            None,
         );
 
         let _ppl = ppl.add_sink_stage("sink", 1, move |r: Receiver<i32>, _thread_idx: usize| {
@@ -343,8 +353,9 @@ mod test {
             4,
             SourceWork(Arc::new(Mutex::new(vec![1, 2, 3, 4]))),
             10,
+            None,
         );
-        let ppl = ppl.add_work_stage("Multiply", 2, IntermidiateWork, 10);
+        let ppl = ppl.add_work_stage("Multiply", 2, IntermidiateWork, 10, None);
         let _ppl = ppl.add_sink_work_stage("sink", 1, SinkWork);
     }
 }
